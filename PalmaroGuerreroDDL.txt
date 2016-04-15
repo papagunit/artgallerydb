@@ -1,0 +1,1448 @@
+/*
+$$$$$$$\                                                  $$$$$$\                                                                        
+$$  __$$\                                                $$  __$$\                                                                       
+$$ |  $$ | $$$$$$\  $$\    $$\  $$$$$$\  $$$$$$$\        $$ /  \__|$$\   $$\  $$$$$$\   $$$$$$\   $$$$$$\   $$$$$$\   $$$$$$\   $$$$$$\  
+$$ |  $$ |$$  __$$\ \$$\  $$  |$$  __$$\ $$  __$$\       $$ |$$$$\ $$ |  $$ |$$  __$$\ $$  __$$\ $$  __$$\ $$  __$$\ $$  __$$\ $$  __$$\ 
+$$ |  $$ |$$$$$$$$ | \$$\$$  / $$ /  $$ |$$ |  $$ |      $$ |\_$$ |$$ |  $$ |$$$$$$$$ |$$ |  \__|$$ |  \__|$$$$$$$$ |$$ |  \__|$$ /  $$ |
+$$ |  $$ |$$   ____|  \$$$  /  $$ |  $$ |$$ |  $$ |      $$ |  $$ |$$ |  $$ |$$   ____|$$ |      $$ |      $$   ____|$$ |      $$ |  $$ |
+$$$$$$$  |\$$$$$$$\    \$  /   \$$$$$$  |$$ |  $$ |      \$$$$$$  |\$$$$$$  |\$$$$$$$\ $$ |      $$ |      \$$$$$$$\ $$ |      \$$$$$$  |
+\_______/  \_______|    \_/     \______/ \__|  \__|       \______/  \______/  \_______|\__|      \__|       \_______|\__|       \______/ 
+                                                                                                                                         
+                                                                                                                                         
+                                                                                                                                         
+$$$$$$$\                                      $$$$$$$\            $$\                                                                    
+$$  __$$\                                     $$  __$$\           $$ |                                                                   
+$$ |  $$ |$$\   $$\  $$$$$$\  $$$$$$$\        $$ |  $$ | $$$$$$\  $$ |$$$$$$\$$$$\   $$$$$$\   $$$$$$\   $$$$$$\                         
+$$$$$$$  |$$ |  $$ | \____$$\ $$  __$$\       $$$$$$$  | \____$$\ $$ |$$  _$$  _$$\  \____$$\ $$  __$$\ $$  __$$\                        
+$$  __$$< $$ |  $$ | $$$$$$$ |$$ |  $$ |      $$  ____/  $$$$$$$ |$$ |$$ / $$ / $$ | $$$$$$$ |$$ |  \__|$$ /  $$ |                       
+$$ |  $$ |$$ |  $$ |$$  __$$ |$$ |  $$ |      $$ |      $$  __$$ |$$ |$$ | $$ | $$ |$$  __$$ |$$ |      $$ |  $$ |                       
+$$ |  $$ |\$$$$$$$ |\$$$$$$$ |$$ |  $$ |      $$ |      \$$$$$$$ |$$ |$$ | $$ | $$ |\$$$$$$$ |$$ |      \$$$$$$  |                       
+\__|  \__| \____$$ | \_______|\__|  \__|      \__|       \_______|\__|\__| \__| \__| \_______|\__|       \______/                        
+          $$\   $$ |                                                                                                                     
+          \$$$$$$  |                                                                                                                     
+           \______/  
+*/                                                                                                                    
+-----------------
+----------------
+--DDL created by Ryan Palmaro and Devon Guerrero
+--Creating a new user schema with appropriate privileges is recommended
+---------------------------------
+--Current CREATE TABLE order:
+--------------------------------
+--color_menu
+--shipping_fee
+--employee_position
+--art_type
+--vendor_type
+--services
+--art_work
+--customer
+--employees
+--vendor
+--acquisition
+--cosignment_agreement
+--customer_art_orders
+--customer_preferences
+--service_orders
+--------------------------------------
+--VIEWS for adding info through forms: check if these are updated or if we need them because we can use the table views to create a form, delete the fields we dont need, and then save as separate forms (ie from employees_vu create an add service employee and add sales employee) for maybe create a subform in the form that shows only the right fields
+--------------------------------------
+--artist_vendor
+--auction_vendor
+--other_gallery_vendor
+--paintings
+--photo
+--sculpture
+--sales_employee
+--service_employee
+---------------------------------------
+--REPORT VIEWS:
+---------------------------------------
+--service_invoice_vu
+--sales_invoice_vu
+--consignment_agreement_vu
+--purchase_vu
+---------------------------------------
+--TABLE VIEWS identical to the tables for importing:
+---------------------------------------
+--color_menu_vu still need to make
+--shipping_fee_vu
+--employee_position_vu
+--art_type_vu
+--vendor_type_vu
+--services_vu
+--art_work_vu
+--customer_vu
+--employees_vu
+--vendor_vu
+--acquisition_vu
+--cosignment_agreement_vu
+--customer_art_orders_vu
+--preferences_vu
+--service_orders_vu
+--------------------------------------
+--QUERIES
+--------------------------------------
+--art_works_for_sale_query
+--cust_and_pref_query and make this parameter query
+--artwork_on_consignment_query 
+--released_consignments_query hint: add 6 months to end date
+--artwork_sold_month_query hint: user enters month, shows profit earned by each sales, commission paid to salesperson, no consignment, landscape layout
+--service_revenues_query grouped by services
+--best_sales_person_query order by total commissions and # art sold
+--customers_previous_buyers_query
+--customers_preferences_never_purchased_query
+--customers_purchased_and_serviced_query
+----------------
+/*
+   ,           "It's happy hour somewhere!" - B. Floyd
+    \               /
+     \0          O   ..
+      |\_      \/|\_o[]
+      |          |
+     / \        / \
+____/___\______/___\__________
+*/
+--Let's clear everything first
+
+BEGIN
+   FOR cur_rec IN (SELECT object_name, object_type
+                     FROM user_objects
+                    WHERE object_type IN
+                             ('TABLE',
+                              'VIEW',
+                              'PACKAGE',
+                              'PROCEDURE',
+                              'FUNCTION',
+                              'SEQUENCE'
+                             ))
+   LOOP
+      BEGIN
+         IF cur_rec.object_type = 'TABLE'
+         THEN
+            EXECUTE IMMEDIATE    'DROP '
+                              || cur_rec.object_type
+                              || ' "'
+                              || cur_rec.object_name
+                              || '" CASCADE CONSTRAINTS';
+         ELSE
+            EXECUTE IMMEDIATE    'DROP '
+                              || cur_rec.object_type
+                              || ' "'
+                              || cur_rec.object_name
+                              || '"';
+         END IF;
+      EXCEPTION
+         WHEN OTHERS
+         THEN
+            DBMS_OUTPUT.put_line (   'FAILED: DROP '
+                                  || cur_rec.object_type
+                                  || ' "'
+                                  || cur_rec.object_name
+                                  || '"'
+                                 );
+      END;
+   END LOOP;
+END;
+/
+
+CREATE TABLE color_menu --use this as a drop down menu
+(colortype VARCHAR2(20) PRIMARY KEY
+);
+
+INSERT INTO color_menu (colortype)
+VALUES ('4k');
+
+INSERT INTO color_menu (colortype)
+VALUES ('Black and White');
+
+INSERT INTO color_menu (colortype)
+VALUES ('Color');
+
+COMMIT;
+
+CREATE TABLE shipping_fee
+(shipping_fee_id NUMBER(6) PRIMARY KEY,
+shipping_name VARCHAR(10) NOT NULL,
+shipping_fee DECIMAL(6,2) NOT NULL,
+shipping_desc VARCHAR(100) NOT NULL
+);
+--Shipping is based on speed and NOT weight. We are using UPS flat rate shipping boxes.
+--Check the shipping prices to make sure we want those 
+INSERT INTO shipping_fee (shipping_fee_id,shipping_name,
+            shipping_fee,shipping_desc)
+VALUES (1,'Standard',3,'Standard shipping rate, 7-14 days');
+
+INSERT INTO shipping_fee (shipping_fee_id,shipping_name,shipping_fee,
+            shipping_desc)
+VALUES (2,'Express',6,'3-5 Days');
+
+INSERT INTO shipping_fee (shipping_fee_id,shipping_name,shipping_fee,
+                          shipping_desc)
+VALUES (3,'Overnight',10,'1-2 Business days');
+
+INSERT INTO shipping_fee (shipping_fee_id,shipping_name,shipping_fee,
+                          shipping_desc)
+VALUES (4,'Pick Up',0.00,
+        'Customer comes to the gallery to retrive the artwork');
+        
+COMMIT;
+
+CREATE TABLE employee_position
+(employee_position VARCHAR(20) PRIMARY KEY
+);
+
+INSERT INTO employee_position (Employee_Position)
+VALUES ('Owner');
+
+INSERT INTO employee_position (Employee_Position)
+VALUES ('Accounting Manager');
+
+INSERT INTO employee_position (Employee_Position)
+VALUES ('Cashier');
+
+INSERT INTO employee_position (Employee_Position)
+VALUES ('Bookkeeper');
+
+INSERT INTO employee_position (Employee_Position)
+VALUES ('Service Manager');
+
+INSERT INTO employee_position (Employee_Position)
+VALUES ('Service Worker');
+
+INSERT INTO employee_position (Employee_Position)
+VALUES ('Intern');
+
+INSERT INTO employee_position (Employee_Position)
+VALUES ('Sales Manager');
+
+INSERT INTO employee_position (Employee_Position)
+VALUES ('Salesperson');
+
+COMMIT;
+
+CREATE TABLE art_type
+(art_type VARCHAR(20) PRIMARY KEY
+);
+
+INSERT INTO art_type (art_type)
+VALUES ('Photo');
+
+INSERT INTO art_type (art_type)
+VALUES ('Painting');
+
+INSERT INTO art_type (art_type)
+VALUES ('Sculpture');
+
+COMMIT;
+
+CREATE TABLE vendor_type
+(vendor_type VARCHAR(20) PRIMARY KEY
+);
+
+INSERT INTO vendor_type (vendor_type)
+VALUES ('Artist');
+
+INSERT INTO vendor_type (vendor_type)
+VALUES ('Other Galleries');
+
+INSERT INTO vendor_type (vendor_type)
+VALUES ('Auctions');
+
+COMMIT;
+
+CREATE TABLE services
+(serviceid		
+	NUMBER(6)
+	CONSTRAINT ser_serid_pk PRIMARY KEY,
+service_name		
+	VARCHAR2(40) NOT NULL,
+service_rate		
+	DECIMAL(17,2) NOT NULL,
+service_description	
+	VARCHAR2(200) NOT NULL
+);
+
+
+INSERT INTO services (serviceid,service_name,service_rate,service_description)
+VALUES (1,'Photo Framing',0.35,'Framing for a photograph');
+
+INSERT INTO services (serviceid,service_name,service_rate,service_description)
+VALUES (2,'Painting Framing',0.45,'Framing for a painting');
+
+INSERT INTO services (serviceid,service_name,service_rate,service_description)
+VALUES (3,'Cleaning',3.00,'General cleaning for all artwork types');
+
+INSERT INTO services (serviceid,service_name,service_rate,service_description)
+VALUES (4,'Restoration',5.00,
+        'Transforms all artwork types into original condition');
+
+INSERT INTO services (serviceid,service_name,service_rate,service_description)
+VALUES (5,'Free Two Year Sculpture Cleaning',0.00,
+        'Free cleaning only for sculpture that have been sold two years prior');
+        
+COMMIT;
+
+
+CREATE TABLE art_work
+(artid			
+	NUMBER(6)
+	CONSTRAINT artwork_artid_pk PRIMARY KEY,
+art_title		
+	VARCHAR2(30)
+	CONSTRAINT artwork_arttit_nn NOT NULL,
+description		
+	VARCHAR2(50),
+date_created		
+	DATE,
+sell_goal_date		
+	DATE
+	CONSTRAINT artwork_sgd_nn NOT NULL,
+art_apprasial_value	
+	DECIMAL(17,2) CONSTRAINT apprasial_positive CHECK(art_apprasial_value >= 0),
+minimum_selling_price	
+	DECIMAL(17,2)
+	CONSTRAINT artwork_msp_nn NOT NULL,
+artist_last_name	
+	VARCHAR2(20),
+artist_firstname	
+	VARCHAR2(20),
+country_origin		
+	VARCHAR2(30),
+state_origin		
+	VARCHAR2(20),
+city_origin		
+	VARCHAR2(20),
+art_weight		
+	NUMBER(6,2)
+	CONSTRAINT artwork_artwei_nn NOT NULL,
+art_condition		
+	VARCHAR2(20)
+	CONSTRAINT artwork_artcon_nn NOT NULL,
+art_height		
+	NUMBER(6,2)
+	CONSTRAINT artwork_arthei_nn NOT NULL 
+	CONSTRAINT artwork_arthei_ck CHECK(art_height > 0),
+art_width		
+	NUMBER(6,2)
+	CONSTRAINT artwork_artwid_nn NOT NULL
+	CONSTRAINT artwork_artwid_ck CHECK(art_width > 0),
+art_depth
+	NUMBER(6,2)
+	CONSTRAINT artwork_artdep_nn NOT NULL
+	CONSTRAINT artwork_artdep_ck CHECK(art_depth > 0),
+art_material		
+	VARCHAR2(20)
+	CONSTRAINT artwork_artmat_nn NOT NULL,
+art_type		
+	VARCHAR2(20)
+	CONSTRAINT artwork_artcat_nn NOT NULL,
+--CONSTRAINT artwor_artcat_ck CHECK(category IN ('photo','painting','sculpture')),
+photo_unique		
+	VARCHAR2(3),
+photo_numbered		
+	VARCHAR2(6),
+painting_medium		
+	VARCHAR2(20),
+colortype
+	VARCHAR2(20) REFERENCES color_menu (colortype), --need to add not null check
+CONSTRAINT atrwor_arttype_fk FOREIGN KEY (art_type)
+REFERENCES art_type (art_type),
+CONSTRAINT atrwor_uninum_ck CHECK(
+    (photo_unique IS NOT NULL AND photo_numbered IS NULL)
+OR  (photo_unique IS NULL AND photo_numbered IS NOT NULL)
+OR  (photo_unique IS NULL AND photo_numbered IS NULL)),
+
+CONSTRAINT artwor_artcate_ck CHECK(
+    (painting_medium IS NULL)
+OR  (art_type = 'Painting' AND photo_unique IS NULL AND photo_numbered IS NULL
+    AND painting_medium IS NOT NULL)
+OR  (art_type = 'Sculpture' AND photo_unique IS NULL AND photo_numbered IS NULL
+    AND painting_medium IS NULL)));
+
+--Sample painting, sculpture, photo
+INSERT INTO Art_Work (artid,art_title,description,date_created,sell_goal_date,
+art_apprasial_value,minimum_selling_price,artist_last_name,artist_firstname,
+country_origin,state_origin,city_origin,art_weight,art_condition,art_height,
+art_width,art_depth,art_material,art_type,painting_medium)
+VALUES (1,'Painting sample','Desc','01-JAN-01','02-JAN-01',5000,2000,'Shmoe',
+        'Joe','USA','CA','Townville',3,'Good',4,5,1,'Canvas','Painting','Oil');
+
+INSERT INTO Art_Work (artid,art_title,description,date_created,sell_goal_date,
+art_apprasial_value,minimum_selling_price,artist_last_name,artist_firstname,
+country_origin,state_origin,city_origin,art_weight,art_condition,art_height,
+art_width,art_depth,art_material,art_type)
+VALUES (2,'Sculpture sample','Desc','01-JAN-01','02-JAN-01',5000,2000,'Shmoe',
+        'Joe','USA','CA','Townville',3,'Good',4,5,1,'Ceramic','Sculpture');
+
+INSERT INTO Art_Work (artid,art_title,description,date_created,sell_goal_date,
+art_apprasial_value,minimum_selling_price,artist_last_name,artist_firstname,
+country_origin,state_origin,city_origin,art_weight,art_condition,art_height,
+art_width,art_depth,art_material,art_type,photo_unique,photo_numbered,colortype)
+VALUES (3,'Photo sample','Desc','01-JAN-01','02-JAN-01',5000,2000,'Shmoe','Joe',
+'USA','CA','Townville',3,'Good',4,5,1,'Laminate','Photo','Yes',NULL,'4k');
+
+INSERT INTO Art_Work (artid,art_title,description,date_created,sell_goal_date,
+art_apprasial_value,minimum_selling_price,artist_last_name,artist_firstname,
+country_origin,state_origin,city_origin,art_weight,art_condition,art_height,
+art_width,art_depth,art_material,art_type,photo_unique,photo_numbered,colortype)
+VALUES (4,'Photo sample NU','Desc','01-JAN-01','02-JAN-01',5000,2000,'Shmoe',
+        'Joe','USA','CA','Townville',3,'Good',4,5,1,'Laminate','Photo',NULL,
+        'Yes','4k');
+
+INSERT INTO Art_Work (artid,art_title,description,date_created,sell_goal_date,
+art_apprasial_value,minimum_selling_price,artist_last_name,artist_firstname,
+country_origin,state_origin,city_origin,art_weight,art_condition,art_height,
+art_width,art_depth,art_material,art_type,photo_unique,photo_numbered,colortype)
+VALUES (5,'Photo sample','Desc','01-JAN-01','02-JAN-01',5000,2000,'Shmoe','Joe',
+'USA','CA','Townville',3,'Good',4,5,1,'Laminate','Photo',NULL,NULL,'4k');
+
+INSERT INTO Art_Work (artid,art_title,description,date_created,sell_goal_date,
+art_apprasial_value,minimum_selling_price,artist_last_name,artist_firstname,
+country_origin,state_origin,city_origin,art_weight,art_condition,art_height,
+art_width,art_depth,art_material,art_type,photo_unique,photo_numbered,colortype)
+VALUES (6,'David vs Goliath','Goliath beating the shit out of David',
+        '03-MAR-54','05-MAR-15',800000,700000,'Manson','Marilyn','USA','CA',
+        'Townville',500,'Good',100,50,25,'Marble','Sculpture',NULL,NULL,NULL);
+
+INSERT INTO Art_Work (artid,art_title,description,date_created,sell_goal_date,
+art_apprasial_value,minimum_selling_price,artist_last_name,artist_firstname,
+country_origin,state_origin,city_origin,art_weight,art_condition,art_height,
+art_width,art_depth,art_material,art_type,painting_medium)
+VALUES (7,'Hillbilly Playing Banjo','Inspired from The Deliverance','03-MAR-54',
+'05-MAR-15',800000,700000,'Manson','Marilyn',
+'USA','CA','Townville',5,'Horrendous',15,20,2,'Canvas','Painting','Oil');
+
+COMMIT;
+
+CREATE TABLE customer
+(customerid 
+	NUMBER(6) 			
+	CONSTRAINT customer_customerid_pk PRIMARY KEY,
+customer_first_name VARCHAR2(30) 	
+	CONSTRAINT customer_first_name_nn NOT NULL,
+customer_last_name VARCHAR2(35) 	
+	CONSTRAINT customer_last_name_nn NOT NULL,
+customer_address 
+	VARCHAR2(200), 			
+customer_city 
+	VARCHAR2(30), 			 
+customer_state 
+	VARCHAR2(2), 		
+customer_zip 
+	VARCHAR2(5), 		
+customer_home_phone 
+	NUMBER(15), 		
+customer_mobile_phone VARCHAR2(15), 
+customer_email VARCHAR(100)
+	CONSTRAINT c_email_format
+	CHECK (REGEXP_LIKE(customer_email, '[a-zA-Z0-9._%-]+@[a-zA-Z0-9._%-]+\.[a-zA-Z]{2,4}')),
+customer_notes VARCHAR2(1000)
+);
+
+INSERT INTO customer (customerid, CUSTOMER_FIRST_NAME, customer_last_name,
+                      customer_address, customer_city, customer_state, 
+                      customer_zip, customer_home_phone, customer_mobile_phone,
+                      customer_email, customer_notes)
+VALUES                (1,'Joe','Smith','123','San Luis Obispo','CA','93405',
+                      '8054436987','8056635987','something@example.com',
+                      'likes to drink wine');
+INSERT INTO customer (customerid, CUSTOMER_FIRST_NAME, customer_last_name,
+                      customer_address, customer_city, customer_state, 
+                      customer_zip, customer_home_phone, customer_mobile_phone,
+                      customer_email, customer_notes)
+VALUES                (2,'Taylor','Swift','242 West Main Street',
+                      'Hendersonville','CA','37075',
+                      '9763696987','9765315987','taylorswift@gmail.com',
+                      'She does not like tacos');
+INSERT INTO customer (customerid, CUSTOMER_FIRST_NAME, customer_last_name,
+                      customer_address, customer_city, customer_state, 
+                      customer_zip, customer_home_phone, customer_mobile_phone,
+                      customer_email, customer_notes)
+VALUES                (3,'Martha','Dawson','4899 Apple Lane',
+                      'Macomb','IL','61455',
+                      '3093188988','3093188974','marthadawson@gmail.com',
+                      'She loves gallery events');
+INSERT INTO customer (customerid, CUSTOMER_FIRST_NAME, customer_last_name,
+                      customer_address, customer_city, customer_state, 
+                      customer_zip, customer_home_phone, customer_mobile_phone,
+                      customer_email, customer_notes)
+VALUES                (4,'John','Lindley','340 Snider Street',
+                      'Pueblo','CO','81003',
+                      '7199671595','7199671574','johnlindley@gmail.com',
+                      'He takes his time in the gallery. Does not tell his preferences');
+                      
+COMMIT;
+
+CREATE TABLE employees
+(employeeid 		
+	NUMBER(6)
+	CONSTRAINT emp_empid_pk PRIMARY KEY,
+managerid		
+	NUMBER(6),
+  --CONSTRAINT emp_manid_uk, --This used to be unique, 
+  --but people can have same manager according to org chart
+employee_firstname	
+	VARCHAR2(20)
+	CONSTRAINT emp_empfn_nn NOT NULL,
+employee_lastname	
+	VARCHAR2(20)
+	CONSTRAINT emp_empln_nn NOT NULL,
+start_date		
+	DATE
+	CONSTRAINT emp_stadat_nn NOT NULL,
+employee_address	
+	VARCHAR2(200)
+	CONSTRAINT emp_empadd_nn NOT NULL,
+employee_city		
+	VARCHAR2(20)
+	CONSTRAINT emp_empcit_nn NOT NULL,
+employee_zip		
+	VARCHAR2(5)
+	CONSTRAINT emp_empzip_nn NOT NULL,
+employee_state		
+	VARCHAR2(2)
+	CONSTRAINT emp_empsta_nn NOT NULL,
+employee_phone		
+	VARCHAR2(15)
+	CONSTRAINT emp_emppho_nn NOT NULL,
+employee_email		
+	VARCHAR2(30)
+	CONSTRAINT emp_empema_nn NOT NULL
+	CONSTRAINT e_email_format
+	CHECK (REGEXP_LIKE(employee_email, '[a-zA-Z0-9._%-]+@[a-zA-Z0-9._%-]+\.[a-zA-Z]{2,4}')),
+employee_position	
+	VARCHAR2(20)
+	CONSTRAINT emp_emppos_nn NOT NULL,		
+salary			
+	DECIMAL(17,2)
+	CONSTRAINT emp_sal_ck CHECK( salary > 0 ),
+commission_rate		
+	DECIMAL(17,2)
+  CONSTRAINT emp_comrat_ck CHECK( commission_rate > 0 ),
+hourly_rate		
+	DECIMAL(17,2)
+  CONSTRAINT emp_hourat_ck CHECK( hourly_rate > 0 ),
+CONSTRAINT emp_emppos_fk FOREIGN KEY (employee_position)
+REFERENCES employee_position (employee_position),
+	CONSTRAINT emp_manid_fk FOREIGN KEY (managerid)
+	REFERENCES employees (employeeid), 
+	CONSTRAINT emp_empposi_ck CHECK(
+		(employee_position = 'Sales Manager' AND salary IS NOT NULL 
+    AND commission_rate IS NOT NULL
+		AND hourly_rate IS NULL)
+OR  (employee_position = 'Salesperson' AND salary IS NOT NULL 
+    AND commission_rate IS NOT NULL
+		AND hourly_rate IS NULL)
+OR	(employee_position = 'Service Manager' AND salary IS NULL 
+    AND commission_rate IS NULL 
+		AND hourly_rate IS NOT NULL)
+OR	(employee_position = 'Service Worker' AND salary IS NULL 
+    AND commission_rate IS NULL 
+		AND hourly_rate IS NOT NULL)
+OR	(employee_position = 'Owner' AND salary IS NULL AND commission_rate IS NULL 
+		AND hourly_rate IS NULL)
+OR	(employee_position = 'Intern' AND salary IS NULL AND commission_rate IS NULL 
+		AND hourly_rate IS NULL))
+);
+--Putting in full org chart for extra credit
+INSERT INTO employees
+VALUES (1,NULL,'Leonard','Martini','2-NOV-14','453 Bunny Lane','Cambria',
+        '93404','CA','8059389483','leonard@thegallery.com','Owner',
+        NULL,NULL,NULL);
+
+INSERT INTO employees
+VALUES (2,1,'Norm','Allen','2-NOV-14','353 Harp Rd','Cambria','93404',
+'CA','8059386584','allennorm@thegallery.com','Service Manager',NULL,NULL,11);
+
+INSERT INTO employees
+VALUES (3,2,'Alan','Wrench','2-NOV-14','92 Commerce Boulevard','Cambria','93404',
+'CA','8059383526','alanwrench@thegallery.com','Service Worker',NULL,NULL,12);
+
+INSERT INTO employees
+VALUES (4,3,'Woody','Apple','2-NOV-14','3563 Lake Road','Cambria','93404',
+'CA','8059384712','woodyapple@thegallery.com','Service Worker',NULL,NULL,10);
+
+INSERT INTO employees
+VALUES (5,4,'Barry','Floyd','2-NOV-14','1165 Wilmar Farm Road','Cambria','93404',
+'CA','8059386325','barryfloyd@thegallery.com','Intern',NULL,NULL,NULL);
+
+INSERT INTO employees
+VALUES (6,1,'Mary','Long','2-NOV-14','3928 Haven Lane','Cambria','93404',
+'CA','8059381547','marylong@thegallery.com','Sales Manager',50000,.03,NULL);
+
+INSERT INTO employees
+VALUES (7,6,'Joe','Monet','2-NOV-14','4831 Round Table Drive','Cambria','93404',
+'CA','8059389865','joemonet@thegallery.com','Salesperson',40000,.05,NULL);
+
+INSERT INTO employees
+VALUES (8,7,'Art','Van Gogh','2-NOV-14','2791 Terra Street','Cambria','93404',
+'CA','8059385874','artvangogh@thegallery.com','Salesperson',25000,.07,NULL);
+
+COMMIT;
+
+CREATE TABLE vendor
+(vendorid		
+	NUMBER(6) CONSTRAINT vendor_vid_pk PRIMARY KEY,
+vendor_firstname	
+	VARCHAR2(20) NOT NULL,
+vendor_lastname		
+	VARCHAR2(20) NOT NULL,
+vendor_address		
+	VARCHAR2(20) NOT NULL,
+vendor_city		
+	VARCHAR2(20),
+vendor_state		
+	VARCHAR2(2),
+vendor_zip		
+	VARCHAR2(5),
+vendor_phone		
+	VARCHAR2(15) NOT NULL,
+vendor_email		
+	VARCHAR2(30)
+	CONSTRAINT v_email_format
+	CHECK (REGEXP_LIKE(vendor_email, '[a-zA-Z0-9._%-]+@[a-zA-Z0-9._%-]+\.[a-zA-Z]{2,4}')),
+vendor_fax		
+	VARCHAR2(30),
+company_name 
+	VARCHAR2(30),
+vendor_type 
+	VARCHAR2(20) 
+	CONSTRAINT vendortype_nn NOT NULL,
+CONSTRAINT vendor_type_fk FOREIGN KEY (vendor_type)
+REFERENCES vendor_type (vendor_type),
+CONSTRAINT vendor_subtype_check CHECK(
+	(vendor_type='Artist' AND company_name IS NULL)
+	OR (vendor_type='Other Galleries' AND company_name IS NOT NULL)
+	OR (vendor_type='Auctions' AND company_name IS NOT NULL)));
+
+--Assume that artist cannot own a company, must be separate
+
+INSERT INTO vendor 
+VALUES      (1, 'David','Red','4643','Los Angeles','CA','94398','9945693652',
+            'davidred@david.com',NULL,NULL,'Artist');
+
+INSERT INTO vendor 
+VALUES      (2, 'John','Lucky','4643','Pismo','CA','97698','9956693652',
+            'suport@blueocean.com','9945559788','Blue Ocean','Other Galleries');
+
+INSERT INTO vendor 
+VALUES      (3, 'Carson','Bickle','4643','Simi Valley','CA','95698','9945698952'
+            ,'support@redoctober.com',NULL,'Red October','Auctions');
+            
+COMMIT;
+
+CREATE TABLE acquisition
+(acquisitionid		
+	NUMBER(6)
+	CONSTRAINT acquisition_aid_pk PRIMARY KEY,
+acquisition_date	
+	DATE
+	CONSTRAINT acquisition_acqdat_nn NOT NULL,
+acquisition_price	
+	DECIMAL(17,2)
+	CONSTRAINT acquisition_acqpri_nn NOT NULL
+  	CONSTRAINT acquisition_acqpri_ck CHECK(acquisition_price > 0 ),
+artid			
+	NUMBER(6)
+	CONSTRAINT acquisition_artid_uk UNIQUE
+	CONSTRAINT acquisition_artid_nn NOT NULL,
+vendorid		
+	NUMBER(6)
+	CONSTRAINT acquisition_vendor_nn NOT NULL,
+CONSTRAINT artid_fk FOREIGN KEY (artid) REFERENCES art_work (artid),
+CONSTRAINT vendorid_fk FOREIGN KEY (vendorid) REFERENCES vendor (vendorid)
+);
+
+INSERT INTO acquisition
+VALUES      (1,'11-NOV-14',3000.50,1,1);
+
+INSERT INTO acquisition
+VALUES      (2,'15-NOV-11',500.00,2,2);
+
+COMMIT;
+
+CREATE TABLE consignment_agreement
+(consignmentid		
+	NUMBER(6)
+	CONSTRAINT consignmentagre_conid_pk PRIMARY KEY,
+vendorid		
+	NUMBER(6) CONSTRAINT consig_vendorid_nn NOT NULL,
+artid			
+	NUMBER(6)
+	CONSTRAINT conagr_artid_uk UNIQUE
+	CONSTRAINT consig_artid_nn NOT NULL,
+contract_date		
+	DATE
+	CONSTRAINT conagr_condat_nn NOT NULL,
+begin_date		
+	DATE
+	CONSTRAINT conagr_begdat_nn NOT NULL,
+end_date		
+	DATE
+	CONSTRAINT conagr_enddat_nn NOT NULL,
+consignment_rate	
+	DECIMAL(17,2)
+	CONSTRAINT conagr_conrat_nn NOT NULL,
+CONSTRAINT conagr_enddat_ck CHECK( end_date > begin_date),
+CONSTRAINT conagr_begdat_ck CHECK( begin_date < end_date),
+CONSTRAINT conagr_venid_fk FOREIGN KEY (vendorid)
+REFERENCES vendor (vendorid),
+CONSTRAINT conagr_artid_fk FOREIGN KEY (artid)
+REFERENCES art_work (artid)
+);
+
+INSERT INTO CONSIGNMENT_AGREEMENT 
+VALUES      (1,1,3,'13-DEC-13','13-DEC-13','13-DEC-15',.60);
+
+INSERT INTO CONSIGNMENT_AGREEMENT 
+VALUES      (2,1,6,'05-DEC-14','06-DEC-14','06-DEC-15',.05);
+
+INSERT INTO CONSIGNMENT_AGREEMENT 
+VALUES      (3,1,7,'06-JUL-14','01-NOV-14','04-DEC-14',.05);
+
+COMMIT;
+
+CREATE TABLE customer_art_orders
+(orderid	
+	NUMBER(6)
+	CONSTRAINT customer_ordid_pk PRIMARY KEY,
+sales_price
+  DECIMAL(17,2)
+  CONSTRAINT cao_salpri_ck CHECK ( sales_price >= 0 ),
+shipping_fee_id
+	NUMBER(6),
+misc_charges
+	DECIMAL(17,2)
+	CONSTRAINT cao_mischar_ck CHECK
+	(misc_charges >= 0),
+order_date
+  DATE NOT NULL,
+customerid	
+	NUMBER(6)
+	CONSTRAINT custord_customerid_nn NOT NULL,
+employeeid	
+	NUMBER(6)
+	CONSTRAINT custord_employeeid_nn NOT NULL,
+artid		
+	NUMBER(6) UNIQUE
+	CONSTRAINT custord_artid_nn NOT NULL,
+discount	
+	DECIMAL(19,4)
+	CONSTRAINT cao_dis_ck CHECK( discount >= 0 ),
+managerid
+  NUMBER(6),
+CONSTRAINT cao_cusid_fk FOREIGN KEY (customerid) 
+REFERENCES customer (customerid),
+CONSTRAINT cao_empid_fk FOREIGN KEY (employeeid)
+REFERENCES employees (employeeid),
+CONSTRAINT cao_artid_fk FOREIGN KEY (artid)
+REFERENCES art_work (artid),
+CONSTRAINT cao_manid_fk FOREIGN KEY (managerid)
+REFERENCES employees (employeeid),
+CONSTRAINT cao_ship_fk FOREIGN KEY (shipping_fee_id)
+REFERENCES shipping_fee (shipping_fee_id),
+CONSTRAINT cao_manid_ck CHECK( 
+    (sales_price > 5000 OR discount > 0.05 AND managerid IS NOT NULL)
+OR  (sales_price <=5000 OR discount <= 0.05 AND manageriD IS NULL))
+);
+
+INSERT INTO CUSTOMER_ART_ORDERS
+VALUES      (1,8000,1,0,'12-DEC-14',1,7,1,0,1);
+
+INSERT INTO CUSTOMER_ART_ORDERS
+VALUES      (2,4000,2,5.00,'10-NOV-14',1,7,2,0.01,NULL);
+
+COMMIT;
+
+CREATE TABLE preferences
+(preference_id 
+	NUMBER(6) 
+	CONSTRAINT preferences_preference_id_pk PRIMARY KEY,
+  preference_date
+  DATE NOT NULL,
+art_type
+  VARCHAR(20) REFERENCES art_type(art_type),
+art_style 
+	VARCHAR2(15),
+art_medium 
+	VARCHAR2(15),
+min_price 
+	NUMBER(10) 	
+	CONSTRAINT preferences_art_min_price_ch CHECK(min_price > 0),
+max_price 
+	NUMBER(10) 	
+	CONSTRAINT preferences_art_max_price_ch CHECK(max_price > 0),
+century 
+	VARCHAR2(15),
+artist 
+	VARCHAR2(15),
+customerid 
+	NUMBER(6) 	
+	CONSTRAINT preferences_customerid_fk REFERENCES customer(customerid)
+	CONSTRAINT preferences_customerid_nn NOT NULL
+);
+
+INSERT INTO PREFERENCES 
+VALUES      (1,'6-DEC-14','Painting','Gothic','oil painting',1000,40000,'13th',NULL,1);
+
+INSERT INTO PREFERENCES 
+VALUES      (2,'6-DEC-14','Sculpture','Modern','Gold',50000,4000000,'21th',
+            'Antony Gormley',2);
+
+COMMIT;
+
+CREATE TABLE service_orders
+(service_orderid		
+	NUMBER(6)
+	CONSTRAINT serord_ordid_pk PRIMARY KEY,
+order_date			
+	DATE NOT NULL,
+estimated_pickup_date		
+	DATE,
+shipping_fee_id
+	NUMBER(6) NOT NULL,
+misc_charge
+	DECIMAL(17,2)
+	CONSTRAINT so_miccha_ck CHECK
+	(misc_charge >=0),
+customerid			
+	NUMBER(6),
+artid				
+	NUMBER(6),
+employeeid			
+	NUMBER(6)
+	CONSTRAINT so_employeeid_nn NOT NULL,
+serviceid			
+	NUMBER(6)
+	CONSTRAINT so_serviceid_nn NOT NULL,
+notes
+	VARCHAR2(2000),
+  --Store artwork that doesn't belong to us
+guest_art_height		
+	NUMBER(6,2)
+	CONSTRAINT servord_arthei_ck CHECK(guest_art_height > 0),
+guest_art_width		
+	NUMBER(6,2)
+	CONSTRAINT servord_artwid_ck CHECK(guest_art_width > 0),
+guest_art_depth
+	NUMBER(6,2)
+	CONSTRAINT servord_artdep_ck CHECK(guest_art_depth > 0),
+  
+CONSTRAINT guest_dimensions_ck CHECK(artid IS NOT NULL 
+AND guest_art_height IS NULL
+AND guest_art_width IS NULL
+AND guest_art_depth IS NULL
+OR artid IS NULL
+AND guest_art_height IS NOT NULL
+AND guest_art_width IS NOT NULL
+AND guest_art_depth IS NOT NULL),
+  
+CONSTRAINT serord_orddat_ck CHECK ( order_date <= estimated_pickup_date ),
+CONSTRAINT serprd_epd_ck CHECK ( estimated_pickup_date >= order_date), 
+CONSTRAINT cust_id_fk FOREIGN KEY (customerid) REFERENCES customer (customerid),
+CONSTRAINT art_id_fk FOREIGN KEY (artid) REFERENCES art_work (artid),
+CONSTRAINT emp_id_fk FOREIGN KEY (employeeid) REFERENCES employees (employeeid),
+CONSTRAINT service_id_fk FOREIGN KEY (serviceid) 
+REFERENCES services (serviceid),
+CONSTRAINT serord_shipping_fk FOREIGN KEY (shipping_fee_id) 
+REFERENCES shipping_fee (shipping_fee_id)
+);
+
+INSERT INTO service_orders
+VALUES      (1,'12-DEC-14','16-DEC-14',4,0,1,3,3,1,
+            'Please use oak for the frame',NULL,NULL,NULL);
+INSERT INTO service_orders
+VALUES      (2,'1-JAN-15','16-JAN-15',3,0,1,NULL,3,1,
+            'Please use oak for the frame',5,6,2);
+INSERT INTO service_orders
+VALUES      (3,'1-OCT-14','15-OCT-14',2,10,2,NULL,3,4,
+            'Be careful with the sculpture it is very old',20,15,6);
+            
+COMMIT;
+
+--------------------------------------------------------------------------------
+--Views for adding information. Do we still need these?
+--------------------------------------------------------------------------------
+
+CREATE OR REPLACE VIEW artist_vendor
+AS
+SELECT vendor_firstname, vendor_lastname, vendor_address, vendor_city, 
+vendor_state, vendor_zip, vendor_phone, vendor_email, vendor_fax
+FROM vendor
+WHERE vendor_type='Artist';
+
+CREATE OR REPLACE VIEW auction_vendor
+AS
+SELECT vendor_firstname, vendor_lastname, vendor_address, vendor_city, 
+vendor_state, vendor_zip, vendor_phone, vendor_email, vendor_fax, company_name
+FROM vendor
+WHERE vendor_type='Auctions';
+
+CREATE OR REPLACE VIEW other_gallery
+AS
+SELECT vendor_firstname, vendor_lastname, vendor_address, vendor_city, 
+vendor_state, vendor_zip, vendor_phone, vendor_email, vendor_fax, company_name
+FROM vendor
+WHERE vendor_type='Other Galleries';
+
+CREATE OR REPLACE VIEW paintings
+AS
+SELECT 	artid, art_title, description,	date_created, sell_goal_date,		
+	art_apprasial_value, minimum_selling_price, artist_last_name,	
+	artist_firstname, country_origin, state_origin, city_origin,		
+	art_weight, art_condition, art_height, art_width,		
+	art_material, art_type, painting_medium		
+FROM 	art_work
+WHERE 	art_type = 'painting';	
+
+CREATE OR REPLACE VIEW photo
+AS
+SELECT 	artid, art_title, description,	date_created, sell_goal_date,		
+	art_apprasial_value, minimum_selling_price, artist_last_name,	
+	artist_firstname, country_origin, state_origin, city_origin,		
+	art_weight, art_condition, art_height, art_width,		
+	art_material, art_type, painting_medium, photo_numbered,
+	photo_unique, colortype	
+FROM 	art_work			
+WHERE 	art_type = 'photo';	
+
+CREATE OR REPLACE VIEW sculpture
+AS
+SELECT 	artid, art_title, description,	date_created, sell_goal_date,		
+	art_apprasial_value, minimum_selling_price, artist_last_name,	
+	artist_firstname, country_origin, state_origin, city_origin,		
+	art_weight, art_condition, art_height, art_width,		
+	art_material, art_type, painting_medium, art_depth		
+FROM 	art_work
+WHERE 	art_type = 'sculpture';
+
+CREATE OR REPLACE VIEW sales_employee
+AS 
+SELECT  employeeid, managerid, employee_firstname, employee_lastname, 
+        start_date, employee_address, employee_city, employee_zip, 
+        employee_state, employee_phone, employee_email, employee_position,
+        salary, commission_rate
+FROM    employees
+WHERE   employee_position = 'sales'; 	
+
+CREATE OR REPLACE VIEW service_employee
+AS 
+SELECT  employeeid, managerid, employee_firstname, employee_lastname, 
+        start_date, employee_address, employee_city, employee_zip, 
+        employee_state, employee_phone, employee_email, employee_position,
+        hourly_rate
+FROM    employees
+WHERE   employee_position = 'service';
+---------------------------------------------------
+--Form views
+---------------------------------------------------
+CREATE OR REPLACE VIEW Service_Invoice_vu
+AS
+SELECT  --customer table
+        c.customerid, c.customer_first_name, c.customer_last_name, 
+        c.customer_address,c.customer_city, c.customer_state, c.customer_zip, 
+        c.customer_home_phone, c.customer_mobile_phone,
+        --service_order table
+        so.service_orderid, so.order_date, so.estimated_pickup_date, 
+        Sf.Shipping_Name,
+        Sf.Shipping_Fee, so.misc_charge, so.guest_art_height, 
+        so.guest_art_width,
+        so.guest_art_depth,
+        --service table
+        s.serviceid, s.service_description,            
+        --employee table
+        e.employeeid, e.employee_firstname, e.employee_lastname, 
+        --art table
+        a.artid, a.art_title, a.description, 
+         CASE WHEN a.artid IS NULL
+         THEN ((so.guest_art_height * so.guest_art_width * so.guest_art_depth) 
+                * s.service_rate)
+         ELSE ((a.art_height * a.art_width * a.art_depth) * s.service_rate)
+         END AS "Service_Charge",
+         CASE WHEN a.artid IS NULL
+         THEN ((((so.guest_art_height * so.guest_art_width * so.guest_art_depth) 
+                * s.service_rate) + Sf.Shipping_Fee) * 0.075)
+         ELSE ((((a.art_height * a.art_width * a.art_depth) * s.service_rate) 
+              + Sf.Shipping_Fee) * 0.075)
+         END AS "Tax",
+         CASE WHEN a.artid IS NULL 
+         THEN (((so.guest_art_height * so.guest_art_width * so.guest_art_depth) 
+                * s.service_rate + so.misc_charge + Sf.Shipping_Fee) * 0.075) 
+                + (s.service_rate * (so.guest_art_height * so.guest_art_width 
+                * so.guest_art_depth)) +so.misc_charge+ Sf.Shipping_Fee
+         ELSE (((a.art_height * a.art_width * a.art_depth) * s.service_rate 
+                + so.misc_charge + Sf.Shipping_Fee) * 0.075) + (s.service_rate 
+                * (a.art_height * a.art_width * a.art_depth)) +so.misc_charge 
+                + Sf.Shipping_Fee
+         END AS "Total" 
+FROM    service_orders so
+JOIN    services s
+ON      (so.serviceid = s.serviceid)
+JOIN    customer c
+ON      (so.customerid = c.customerid)
+JOIN    employees e
+ON      (so.employeeid = e.employeeid)
+JOIN    shipping_fee sf
+ON      (sf.shipping_fee_id = so.shipping_fee_id)
+LEFT JOIN    art_work a
+ON      (so.artid = a.artid)
+;
+
+CREATE OR REPLACE VIEW sales_invoice_vu
+AS
+SELECT    
+          --customer_orders table
+          o.orderid, o.sales_price, sf.shipping_name, sf.shipping_fee, o.misc_charges, o.discount,
+          (((o.sales_price + o.misc_charges) * 0.075)+(o.sales_price + 
+          o.misc_charges +
+          NVL(sf.shipping_fee, 0) - NVL(o.discount, 0) )) AS total, 
+          --employee table
+          e.employeeid, e.managerid, e.employee_firstname, e.employee_lastname,
+          --customer table
+          c.customerid, c.customer_first_name, c.customer_last_name, 
+          c.customer_address, c.customer_city, c.customer_state, c.customer_zip,
+          c.customer_home_phone, c.customer_mobile_phone,
+          --art_work table
+          a.artid, a.art_title, a.description 
+FROM      customer_art_orders o
+JOIN      customer c
+ON        (o.customerid = c.customerid)
+JOIN      employees e
+ON        (o.employeeid = e.employeeid)
+JOIN      art_work a
+ON        (o.artid = a.artid)
+JOIN      Shipping_Fee sf
+ON        (sf.shipping_fee_id = o.shipping_fee_id)
+;
+
+CREATE OR REPLACE VIEW consigment_agreement_form_vu
+AS
+SELECT
+Ca.Consignmentid,
+ca.artid,
+ca.contract_date,
+Ca.Begin_Date,
+Ca.End_Date,
+Ca.Consignment_Rate,
+s.vendor_firstname,
+s.vendor_lastname,
+S.Company_Name,
+s.vendor_address,
+s.vendor_city,
+s.vendor_state,
+s.vendor_zip,
+s.vendor_phone,
+s.vendor_email,
+ar.art_title,
+ar.artist_last_name,
+ar.artist_firstname,
+ar.art_type,
+ar.date_created,
+ar.art_condition,
+ar.art_width,
+ar.art_height,
+ar.art_depth,
+ar.art_material,
+ar.city_origin,
+ar.state_origin,
+ar.country_origin,
+ar.description,
+Ar.Art_Apprasial_Value,
+Ar.Minimum_Selling_Price,
+ar.sell_goal_date
+FROM consignment_agreement ca
+JOIN vendor s
+ON (ca.vendorid = s.vendorid)
+JOIN art_work ar
+ON (ca.artid = ar.artid);
+
+CREATE OR REPLACE VIEW purchase_vu
+AS
+SELECT
+Aq.Acquisitionid,
+aq.artid,
+Aq.Acquisition_Date,
+Aq.Acquisition_Price,
+s.vendor_firstname,
+s.vendor_lastname,
+S.Company_Name,
+s.vendor_address,
+s.vendor_city,
+s.vendor_state,
+s.vendor_zip,
+s.vendor_phone,
+s.vendor_email,
+ar.art_title,
+ar.artist_last_name,
+ar.artist_firstname,
+ar.art_type,
+ar.date_created,
+ar.art_condition,
+ar.art_width,
+ar.art_height,
+ar.art_depth,
+ar.art_material,
+ar.city_origin,
+ar.state_origin,
+ar.country_origin,
+ar.description,
+Ar.Art_Apprasial_Value,
+Ar.Minimum_Selling_Price,
+ar.sell_goal_date
+FROM acquisition aq
+JOIN vendor s
+ON (aq.vendorid = s.vendorid)
+JOIN art_work ar
+ON (aq.artid = ar.artid);
+
+----------------------------------------------------------
+--Views identical to tables
+----------------------------------------------------------
+
+CREATE OR REPLACE VIEW color_menu_vu
+AS
+SELECT 
+c.colortype
+FROM color_menu c;
+
+CREATE OR REPLACE VIEW shipping_fee_vu
+AS
+SELECT
+sf.shipping_fee_id,
+Sf.Shipping_Name,
+Sf.Shipping_Fee,
+Sf.Shipping_Desc
+FROM shipping_fee sf;
+
+CREATE OR REPLACE VIEW employee_position_vu
+AS
+SELECT
+ep.employee_position
+FROM employee_position ep;
+
+CREATE OR REPLACE VIEW art_type_vu
+AS
+SELECT
+Aty.Art_Type
+FROM art_type aty;
+
+CREATE OR REPLACE VIEW vendor_type_vu
+AS
+SELECT
+Vt.Vendor_Type
+FROM vendor_type vt;
+
+CREATE OR REPLACE VIEW services_vu
+AS
+SELECT
+S.Serviceid,
+S.Service_Name,
+S.Service_Rate,
+S.Service_Description
+FROM services s;
+
+CREATE OR REPLACE VIEW art_work_vu
+AS
+SELECT
+Ar.Artid,
+ar.art_title,
+Ar.Description,
+Ar.Date_Created,
+ar.sell_goal_date,
+Ar.Art_Apprasial_Value,
+Ar.Minimum_Selling_Price,
+Ar.Artist_Last_Name,
+Ar.Artist_Firstname,
+Ar.country_origin,
+Ar.State_Origin,
+Ar.city_origin,
+Ar.Art_Weight,
+Ar.Art_Condition,
+Ar.Art_Height,
+Ar.Art_Width,
+Ar.Art_Depth,
+Ar.Art_Material,
+Ar.Art_Type,
+Ar.Photo_Numbered,
+Ar.Photo_Unique,
+Ar.Painting_Medium,
+Ar.Colortype
+FROM art_work ar;
+
+CREATE OR REPLACE VIEW customer_vu
+AS
+SELECT
+Cu.customerid,
+Cu.Customer_First_Name,
+Cu.Customer_Last_Name,
+Cu.Customer_Address,
+Cu.Customer_City,
+Cu.Customer_State,
+Cu.Customer_Zip,
+Cu.Customer_Home_Phone,
+Cu.Customer_Mobile_Phone,
+Cu.customer_email,
+Cu.Customer_Notes
+FROM customer cu;
+
+CREATE OR REPLACE VIEW employees_vu
+AS
+SELECT
+E.Employeeid,
+E.Managerid,
+E.Employee_Firstname,
+E.Employee_Lastname,
+E.Start_Date,
+E.Employee_Address,
+E.Employee_City,
+E.Employee_Zip,
+E.Employee_State,
+E.Employee_Phone,
+E.Employee_Email,
+E.Employee_Position,
+E.Salary,
+E.Commission_Rate,
+E.Hourly_Rate
+FROM employees e;
+
+CREATE OR REPLACE VIEW vendor_vu
+AS
+SELECT
+V.Vendorid,
+V.Vendor_Firstname,
+V.Vendor_Lastname,
+V.Vendor_Address,
+V.Vendor_City,
+V.Vendor_State,
+v.vendor_zip,
+V.Vendor_Phone,
+V.Vendor_Email,
+V.Vendor_Fax,
+V.Company_Name,
+V.Vendor_Type
+FROM vendor v;
+
+CREATE OR REPLACE VIEW acquisition_vu
+AS
+SELECT
+Ac.Acquisitionid,
+Ac.Acquisition_Date,
+Ac.Acquisition_Price,
+Ac.Artid,
+Ac.Vendorid
+FROM acquisition ac;
+
+CREATE OR REPLACE VIEW consignment_agreement_vu
+AS
+SELECT
+Ca.Consignmentid,
+Ca.Vendorid,
+Ca.Artid,
+Ca.Contract_Date,
+Ca.Begin_Date,
+Ca.End_Date,
+Ca.Consignment_Rate
+FROM consignment_agreement ca;
+
+CREATE OR REPLACE VIEW customer_art_orders_vu
+AS
+SELECT
+cao.orderid,
+Cao.Sales_Price,
+Cao.Shipping_Fee_Id,
+Cao.Misc_Charges,
+Cao.Order_Date,
+Cao.Customerid,
+Cao.Employeeid,
+Cao.Artid,
+Cao.Discount,
+Cao.Managerid
+FROM customer_art_orders cao;
+
+CREATE OR REPLACE VIEW preferences_vu
+AS
+SELECT
+P.Preference_Id,
+P.preference_date,
+P.art_type,
+P.Art_Style,
+P.Art_Medium,
+P.Min_Price,
+P.Max_Price,
+P.Century,
+P.Artist,
+P.customerid
+FROM preferences p;
+
+CREATE OR REPLACE VIEW service_orders_vu
+AS
+SELECT
+So.Service_Orderid,
+So.Order_Date,
+So.Estimated_Pickup_Date,
+So.Shipping_Fee_Id,
+So.Misc_Charge,
+So.Customerid,
+So.Artid,
+So.Employeeid,
+So.Serviceid,
+So.Notes,
+so.guest_art_height,
+so.guest_art_width,
+so.guest_art_depth
+FROM service_orders so;
+
+---------------------------------------
+--Queries
+---------------------------------------
+CREATE OR REPLACE VIEW art_works_for_sale_query
+AS
+SELECT  artid, art_title, description, art_apprasial_value, sell_goal_date
+FROM    art_work
+WHERE   artid NOT IN 
+            (SELECT  artid
+             FROM     customer_art_orders);
+		 
+CREATE OR REPLACE VIEW cust_and_pref_query
+AS
+SELECT c.customer_last_name, c.customer_first_name, c.customer_home_phone, 
+c.customer_mobile_phone, c.customer_email, p.art_type
+FROM customer c
+JOIN Preferences p
+ON (P.customerid = C.customerid);
+                    
+CREATE OR REPLACE VIEW artwork_on_consignment_query
+AS
+SELECT a.artid, a.art_title, a.description, ca.begin_date, ca.end_date, 
+v.vendor_firstname, v.vendor_lastname
+FROM art_work a
+JOIN consignment_agreement ca
+ON a.artid=Ca.Artid
+JOIN vendor v
+ON ca.vendorid=v.vendorid
+WHERE SYSDATE BETWEEN ca.begin_date AND ca.end_date
+AND a.artid NOT IN (SELECT artid
+                    FROM customer_art_orders);
+
+CREATE OR REPLACE VIEW released_consignments_query
+AS
+SELECT a.artid, a.art_title, a.description, ca.begin_date, ca.end_date, 
+v.vendor_firstname, v.vendor_lastname, v.company_name
+FROM art_work a
+JOIN consignment_agreement ca
+ON a.artid=ca.artid
+JOIN vendor v
+ON ca.vendorid = v.vendorid
+WHERE ca.consignmentid IN
+      (SELECT consignmentid
+      FROM consignment_agreement
+      WHERE end_date BETWEEN ADD_MONTHS(SYSDATE, -6) AND SYSDATE
+      AND artid NOT IN 
+                          (SELECT artid 
+                          FROM customer_art_orders));
+
+CREATE OR REPLACE VIEW artwork_sold_month_query
+AS
+SELECT  TRUNC(o.order_date,'MONTH') AS order_month, o.orderid, a.art_type, a.art_title, c.customer_last_name, 
+        e.employee_lastname, aq.acquisition_price, o.sales_price, 
+        ((o.sales_price - aq.acquisition_price) - (o.sales_price * 
+        e.commission_rate)) AS Profit, (o.sales_price * e.commission_rate) 
+        AS Sales_Person_Commission
+FROM    customer_art_orders o
+JOIN    art_work a
+ON      (o.artid = a.artid)
+JOIN    employees e
+ON      (e.employeeid = o.employeeid)
+JOIN    acquisition aq
+ON      (aq.artid = a.artid)
+JOIN    customer c
+ON      (c.customerid = o.customerid)
+WHERE o.orderid NOT IN 
+            (SELECT o.orderid
+            FROM    customer_art_orders o
+            JOIN    consignment_agreement ac
+            ON      (o.artid = ac.artid));
+  
+
+CREATE OR REPLACE VIEW service_revenues_query
+AS
+SELECT so.serviceid,s.service_name, SUM(sf.shipping_fee + so.misc_charge + 
+                      CASE WHEN a.artid IS NULL
+                      THEN    ((so.guest_art_height * so.guest_art_width * 
+                              so.guest_art_depth) 
+                              * s.service_rate)
+                      ELSE    ((a.art_height * a.art_width * a.art_depth) * 
+                              s.service_rate)
+                      END) AS total_revenue
+FROM        service_orders so
+LEFT JOIN   art_work a
+ON          (so.artid = a.artid)
+JOIN        shipping_fee sf
+ON          (so.shipping_fee_id = sf.shipping_fee_id)
+JOIN        services s
+ON          (s.serviceid = so.serviceid)
+GROUP BY    so.serviceid, s.service_name;   
+
+CREATE OR REPLACE VIEW top_emp_by_comm_query
+AS 
+SELECT    employee_lastname, employee_firstname, 
+          SUM(o.sales_price * e.commission_rate) AS total_commission
+FROM      employees e
+JOIN      customer_art_orders o
+ON        (e.employeeid = o.employeeid)
+GROUP BY  e.employee_lastname, e.employee_firstname
+HAVING SUM(o.sales_price * e.commission_rate) =
+          (SELECT MAX(SUM(o.sales_price * e.commission_rate))
+          FROM    customer_art_orders o
+          JOIN    employees e
+          ON      (e.employeeid = o.employeeid)
+          GROUP BY e.employee_lastname, e.employee_firstname);
+
+CREATE OR REPLACE VIEW top_employee_sales_query
+AS 
+SELECT    employee_lastname, employee_firstname, 
+          COUNT(o.orderid) AS total_sales
+FROM      employees e
+JOIN      customer_art_orders o
+ON        (e.employeeid = o.employeeid)
+GROUP BY  e.employee_lastname, e.employee_firstname
+HAVING COUNT(o.orderid) =
+          (SELECT MAX(COUNT(o.orderid))
+          FROM    customer_art_orders o
+          JOIN    employees e
+          ON      (e.employeeid = o.employeeid)
+          GROUP BY e.employee_lastname, e.employee_firstname);
+
+CREATE OR REPLACE VIEW customers_have_ordered_query
+AS 
+SELECT    customer_first_name, customer_last_name, customer_mobile_phone, 
+          customer_home_phone
+FROM      customer
+WHERE     customerid IN 
+          (SELECT customerid
+          FROM customer_art_orders
+          GROUP BY customerid);
+
+CREATE OR REPLACE VIEW cust_never_purchd_pref_query
+AS
+SELECT    c.customer_first_name, c.customer_last_name, p.art_type, p.art_style,
+          p.art_medium, p.min_price, p.max_price
+FROM      customer c
+JOIN      preferences p
+ON        (c.customerid = p.customerid)
+WHERE     c.customerid NOT IN 
+          (SELECT customerid
+          FROM customer_art_orders);
+
+CREATE OR REPLACE VIEW cus_purchasedserviced_query 
+AS
+SELECT  customerid, customer_last_name, customer_first_name
+FROM    customer
+WHERE   customerid IN
+        (SELECT  customerid
+        FROM    customer_art_orders
+        WHERE   customerid IN
+                (SELECT customerid
+                FROM    service_orders));
+
